@@ -87,7 +87,7 @@ WORKDIR /root/serving/
 
 RUN \
   rm -rf tensorflow && \
-  git clone https://github.com/tensorflow/tensorflow.git &&
+  git clone https://github.com/tensorflow/tensorflow.git && \
   cd tensorflow && \
   git reset --hard 3629fc4
 
