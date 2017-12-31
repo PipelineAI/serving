@@ -1,5 +1,23 @@
 FROM nvidia/cuda:9.0-base-ubuntu16.04
 
+RUN \
+ apt-get update \
+ && apt-get install -y wget bzip2
+
+# Install Anaconda with Python3
+RUN wget -q https://repo.continuum.io/miniconda/Miniconda3-4.3.31-Linux-x86_64.sh -O /tmp/miniconda.sh  && \
+    echo '7fe70b214bee1143e3e3f0467b71453c */tmp/miniconda.sh' | md5sum -c - && \
+    bash /tmp/miniconda.sh -f -b -p /opt/conda && \
+    /opt/conda/bin/conda install --yes python=3.6 sqlalchemy tornado jinja2 traitlets requests pip && \
+    /opt/conda/bin/pip install --upgrade pip && \
+    rm /tmp/miniconda.sh
+
+ENV \
+  PATH=/opt/conda/bin:$PATH
+
+RUN \
+  pip install --upgrade pip
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
         cuda-command-line-tools-9-0 \
@@ -19,8 +37,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libzmq3-dev \
         pkg-config \
         python-dev \
+        python3-dev \
+        python-numpy \
+        python3-numpy \
+        python-six \
+        python3-six \
+        python-wheel \
+        python3-wheel \
+        python-pip \
+        python3-pip \
         rsync \
         software-properties-common \
+        swig \
         unzip \
         zip \
         zlib1g-dev \
@@ -30,9 +58,39 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     find /usr/local/cuda-9.0/lib64/ -type f -name 'lib*_static.a' -not -name 'libcudart_static.a' -delete && \
     rm /usr/lib/x86_64-linux-gnu/libcudnn_static_v7.a
 
-RUN curl -fSsL -O https://bootstrap.pypa.io/get-pip.py && \
-    python get-pip.py && \
-    rm get-pip.py
+#RUN apt-get update && apt-get install -y --no-install-recommends \
+#        build-essential \
+#        cuda-command-line-tools-9-0 \
+#        cuda-cublas-dev-9-0 \
+#        cuda-cudart-dev-9-0 \
+#        cuda-cufft-dev-9-0 \
+#        cuda-curand-dev-9-0 \
+#        cuda-cusolver-dev-9-0 \
+#        cuda-cusparse-dev-9-0 \
+#        curl \
+#        git \
+#        libcudnn7=7.0.5.15-1+cuda9.0 \
+#        libcudnn7-dev=7.0.5.15-1+cuda9.0 \
+#        libcurl3-dev \
+#        libfreetype6-dev \
+#        libpng12-dev \
+#        libzmq3-dev \
+#        pkg-config \
+#        python-dev \
+#        rsync \
+#        software-properties-common \
+#        unzip \
+#        zip \
+#        zlib1g-dev \
+#        wget \
+#        && \
+#    rm -rf /var/lib/apt/lists/* && \
+#    find /usr/local/cuda-9.0/lib64/ -type f -name 'lib*_static.a' -not -name 'libcudart_static.a' -delete && \
+#    rm /usr/lib/x86_64-linux-gnu/libcudnn_static_v7.a
+
+#RUN curl -fSsL -O https://bootstrap.pypa.io/get-pip.py && \
+#    python get-pip.py && \
+#    rm get-pip.py
 
 # Set up grpc
 
@@ -95,7 +153,7 @@ RUN \
 ENV CI_BUILD_PYTHON python
 ENV LD_LIBRARY_PATH /usr/local/cuda/extras/CUPTI/lib64:$LD_LIBRARY_PATH
 ENV TF_NEED_CUDA 1
-ENV TF_CUDA_COMPUTE_CAPABILITIES=3.0,3.5,5.2,5.3,6.0,6.1
+ENV TF_CUDA_COMPUTE_CAPABILITIES=3.0,3.5,3.7,5.2,5.3,6.0,6.1,7.0
 ENV TF_CUDA_VERSION=9.0
 ENV TF_CUDNN_VERSION=7
 ENV TF_NEED_JEMALLOC=1
