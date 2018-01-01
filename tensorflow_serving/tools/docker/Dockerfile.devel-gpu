@@ -74,6 +74,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     find /usr/local/cuda-9.0/lib64/ -type f -name 'lib*_static.a' -not -name 'libcudart_static.a' -delete && \
     rm /usr/lib/x86_64-linux-gnu/libcudnn_static_v7.a
 
+
+RUN \
+  pip install grpcio
+
+RUN \
+  conda install --yes openblas scikit-learn numpy scipy matplotlib pandas seaborn
+
 #RUN apt-get update && apt-get install -y --no-install-recommends \
 #        build-essential \
 #        cuda-command-line-tools-9-0 \
@@ -110,9 +117,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Set up grpc
 
-RUN pip install enum34 futures mock six && \
-    pip install --pre 'protobuf>=3.0.0a3' && \
-    pip install -i https://testpypi.python.org/simple --pre grpcio
+#RUN pip install enum34 futures mock six && \
+#    pip install --pre 'protobuf>=3.0.0a3' && \
+#    pip install -i https://testpypi.python.org/simple --pre grpcio
 
 # Set up Bazel.
 
@@ -159,6 +166,7 @@ RUN \
 
 WORKDIR /root/serving/
 
+# Override the submoduled version of tensorflow (risky!)
 RUN \
   rm -rf tensorflow && \
   git clone https://github.com/tensorflow/tensorflow.git && \
@@ -166,7 +174,7 @@ RUN \
   git reset --hard 3629fc4
 
 # Configure the build for our CUDA configuration.
-ENV CI_BUILD_PYTHON python
+ENV CC_OPT_FLAGS="-march=native"
 ENV LD_LIBRARY_PATH /usr/local/cuda/extras/CUPTI/lib64:$LD_LIBRARY_PATH
 ENV TF_NEED_CUDA 1
 ENV TF_CUDA_COMPUTE_CAPABILITIES=3.0,3.5,3.7,5.2,5.3,6.0,6.1,7.0
@@ -177,6 +185,13 @@ ENV TF_ENABLE_XLA=1
 ENV TF_NEED_HDFS=1
 ENV TF_NEED_S3=1
 ENV TF_NEED_GCP=1
+ENV PYTHON_BIN_PATH=/opt/conda/bin/python3.6
+ENV PYTHON_LIB_PATH=/opt/conda/lib/python3.6
+ENV CI_BUILD_PYTHON=$PYTHON_BIN_PATH
+
+# TODO: Copied from Workshop
+#RUN cp -P /usr/include/cudnn.h /usr/local/cuda/include
+#RUN cp -P /usr/lib/x86_64-linux-gnu/libcudnn* /usr/local/cuda/lib64
 
 # Fix paths so that CUDNN can be found
 # See https://github.com/tensorflow/tensorflow/issues/8264
