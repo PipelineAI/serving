@@ -1,0 +1,183 @@
+FROM nvidia/cuda:9.0-base-ubuntu16.04
+
+ENV \
+  OS_LOCALE="en_US.UTF-8" \
+  LANG=${OS_LOCALE} \
+  LANGUAGE=en_US:en \
+  LC_ALL=${OS_LOCALE}
+
+RUN \
+ apt-get update \
+ && apt-get -y install curl locales \
+ && apt-get clean \
+ && rm -rf /var/lib/apt/lists/*
+
+RUN \
+  locale-gen ${OS_LOCALE} \
+  && localedef -i en_US -f UTF-8 en_us.UTF-8
+
+RUN \
+ apt-get update \
+ && apt-get install -y wget bzip2
+
+# Install Anaconda with Python3
+RUN wget -q https://repo.continuum.io/miniconda/Miniconda3-4.3.31-Linux-x86_64.sh -O /tmp/miniconda.sh  && \
+    echo '7fe70b214bee1143e3e3f0467b71453c */tmp/miniconda.sh' | md5sum -c - && \
+    bash /tmp/miniconda.sh -f -b -p /opt/conda && \
+    /opt/conda/bin/conda install --yes python=3.6 sqlalchemy tornado jinja2 traitlets requests pip && \
+    /opt/conda/bin/pip install --upgrade pip && \
+    rm /tmp/miniconda.sh
+
+ENV \
+  PATH=/opt/conda/bin:$PATH
+
+RUN \
+  conda update -n base conda
+
+RUN \
+  pip install --upgrade pip
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential \
+        cuda-command-line-tools-9-0 \
+        cuda-cublas-dev-9-0 \
+        cuda-cudart-dev-9-0 \
+        cuda-cufft-dev-9-0 \
+        cuda-curand-dev-9-0 \
+        cuda-cusolver-dev-9-0 \
+        cuda-cusparse-dev-9-0 \
+        curl \
+        git \
+        libcudnn7=7.0.5.15-1+cuda9.0 \
+        libcudnn7-dev=7.0.5.15-1+cuda9.0 \
+        libcurl3-dev \
+        libfreetype6-dev \
+        libpng12-dev \
+        libzmq3-dev \
+        pkg-config \
+        python-dev \
+        python3-dev \
+        python-numpy \
+        python3-numpy \
+        python-six \
+        python3-six \
+        python-wheel \
+        python3-wheel \
+        python-pip \
+        python3-pip \
+        rsync \
+        software-properties-common \
+        swig \
+        unzip \
+        zip \
+        zlib1g-dev \
+        wget \
+        && \
+    rm -rf /var/lib/apt/lists/* && \
+    find /usr/local/cuda-9.0/lib64/ -type f -name 'lib*_static.a' -not -name 'libcudart_static.a' -delete && \
+    rm /usr/lib/x86_64-linux-gnu/libcudnn_static_v7.a
+
+
+RUN \
+  pip install grpcio
+
+RUN \
+  conda install --yes openblas scikit-learn numpy scipy matplotlib pandas seaborn
+
+# Set up Bazel.
+
+# We need to add a custom PPA to pick up JDK8, since trusty doesn't
+# have an openjdk8 backport.  openjdk-r is maintained by a reliable contributor:
+# Matthias Klose (https://launchpad.net/~doko).  It will do until
+# we either update the base image beyond 14.04 or openjdk-8 is
+# finally backported to trusty; see e.g.
+#   https://bugs.launchpad.net/trusty-backports/+bug/1368094
+RUN add-apt-repository -y ppa:openjdk-r/ppa && \
+    apt-get update && \
+    apt-get install -y openjdk-8-jdk openjdk-8-jre-headless && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Running bazel inside a `docker build` command causes trouble, cf:
+#   https://github.com/bazelbuild/bazel/issues/134
+# The easiest solution is to set up a bazelrc file forcing --batch.
+RUN echo "startup --batch" >>/root/.bazelrc
+# Similarly, we need to workaround sandboxing issues:
+#   https://github.com/bazelbuild/bazel/issues/418
+RUN echo "build --spawn_strategy=standalone --genrule_strategy=standalone" \
+    >>/root/.bazelrc
+ENV BAZELRC /root/.bazelrc
+# Install the most recent bazel release.
+ENV BAZEL_VERSION 0.8.0
+
+WORKDIR /root
+
+RUN mkdir /bazel && \
+    cd /bazel && \
+    curl -fSsL -O https://github.com/bazelbuild/bazel/releases/download/$BAZEL_VERSION/bazel-$BAZEL_VERSION-installer-linux-x86_64.sh && \
+    curl -fSsL -o /bazel/LICENSE https://raw.githubusercontent.com/bazelbuild/bazel/master/LICENSE && \
+    chmod +x bazel-*.sh && \
+    ./bazel-$BAZEL_VERSION-installer-linux-x86_64.sh && \
+    cd / && \
+    rm -f /bazel/bazel-$BAZEL_VERSION-installer-linux-x86_64.sh
+
+# Download TensorFlow Serving
+RUN \
+  git clone --recurse-submodules https://github.com/tensorflow/serving && \
+  cd serving && \
+  git reset --hard c1ec435
+
+WORKDIR /root/serving/
+
+# Override the submoduled version of tensorflow (risky!)
+#RUN \
+#  rm -rf tensorflow && \
+#  git clone --branch=r1.5 https://github.com/tensorflow/tensorflow.git 
+#  cd tensorflow && \
+#  git reset --hard 3629fc4
+
+# Configure the build for our CUDA configuration.
+ENV CC_OPT_FLAGS="-march=native"
+ENV LD_LIBRARY_PATH=/usr/local/cuda/extras/CUPTI/lib64:$LD_LIBRARY_PATH
+ENV TF_NEED_CUDA=1
+ENV TF_CUDA_COMPUTE_CAPABILITIES=3.0,3.5,3.7,5.2,5.3,6.0,6.1,7.0
+ENV TF_CUDA_VERSION=9.0
+ENV TF_CUDNN_VERSION=7
+ENV TF_NEED_JEMALLOC=1
+ENV TF_ENABLE_XLA=1
+ENV TF_NEED_HDFS=1
+ENV TF_NEED_S3=1
+ENV TF_NEED_GCP=1
+ENV PYTHON_BIN_PATH=/opt/conda/bin/python3.6
+ENV PYTHON_LIB_PATH=/opt/conda/lib/python3.6
+ENV CI_BUILD_PYTHON=$PYTHON_BIN_PATH
+
+# Fix paths so that CUDNN can be found
+# See https://github.com/tensorflow/tensorflow/issues/8264
+RUN ls -lah /usr/local/cuda/lib64/*
+RUN mkdir /usr/lib/x86_64-linux-gnu/include/ && \
+  ln -s /usr/lib/x86_64-linux-gnu/include/cudnn.h /usr/lib/x86_64-linux-gnu/include/cudnn.h && \
+  ln -s /usr/include/cudnn.h /usr/local/cuda/include/cudnn.h && \
+  ln -s /usr/lib/x86_64-linux-gnu/libcudnn.so /usr/local/cuda/lib64/libcudnn.so && \
+  ln -s /usr/lib/x86_64-linux-gnu/libcudnn.so.7 /usr/local/cuda/lib64/libcudnn.so.7
+
+# Build TensorFlow Serving and Install it in /usr/local/bin
+WORKDIR /root/serving
+
+RUN ln -s /usr/local/cuda/lib64/stubs/libcuda.so /usr/local/cuda/lib64/stubs/libcuda.so.1 && \
+    LD_LIBRARY_PATH=/usr/local/cuda/lib64/stubs:${LD_LIBRARY_PATH} \
+    CI_TENSORFLOW_SUBMODULE_PATH=tensorflow tensorflow/tensorflow/tools/ci_build/builds/configured GPU \
+    bazel build \
+    -c opt --config=cuda --copt=-msse4.1 --copt=-msse4.2 --copt=-mavx --copt=-mavx2 --copt=-mfma --copt=-O3 \
+    --cxxopt="-D_GLIBCXX_USE_CXX11_ABI=0" \
+    --crosstool_top=@local_config_cuda//crosstool:toolchain \
+    tensorflow_serving/model_servers:tensorflow_model_server && \
+    cp bazel-bin/tensorflow_serving/model_servers/tensorflow_model_server /usr/local/bin/ && \
+    rm /usr/local/cuda/lib64/stubs/libcuda.so.1 && \
+    bazel clean --expunge
+
+RUN \
+  apt-get update \
+  && apt-get install -y vim
+
+WORKDIR /root
