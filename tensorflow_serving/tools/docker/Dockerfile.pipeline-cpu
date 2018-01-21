@@ -176,10 +176,10 @@ RUN \
     -c opt --config=mkl --copt=-march="haswell" \
     --copt=-msse4.1 --copt=-msse4.2 --copt=-mavx --copt=-mavx2 --copt=-mfma --copt=-O3 \
     --cxxopt="-D_GLIBCXX_USE_CXX11_ABI=0" \
-    --crosstool_top=@local_config_cuda//crosstool:toolchain \
+#    --crosstool_top=@local_config_cuda//crosstool:toolchain \
     tensorflow_serving/model_servers:tensorflow_model_server && \
     cp bazel-bin/tensorflow_serving/model_servers/tensorflow_model_server /usr/local/bin/ && \
-    rm /usr/local/cuda/lib64/stubs/libcuda.so.1 && \
+#    rm /usr/local/cuda/lib64/stubs/libcuda.so.1 && \
     bazel clean --expunge
 
 RUN \
